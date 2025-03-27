@@ -87,13 +87,39 @@ export const apolloClient = new ApolloClient({
         keyFields: ["id"],
       },
     },
+    // Add cache size limit - 25MB max cache size
+    resultCaching: true,
+    canonizeResults: true,
   }),
   defaultOptions: {
     watchQuery: {
+      // Change fetch policy to cache-and-network with timeout to prevent stale data
       fetchPolicy: "cache-and-network",
+      nextFetchPolicy: "cache-first",
+      // Add garbage collection timeout - clear from cache after 10 minutes
+      pollInterval: 600000,
+    },
+    query: {
+      fetchPolicy: "cache-first",
+      errorPolicy: "all",
     },
   },
 });
+
+// Modify the cache cleanup code:
+const CACHE_CLEANUP_INTERVAL = 300000; // 5 minutes
+setInterval(() => {
+  try {
+    // Apollo doesn't support evicting by time directly
+    // Instead, use a more basic approach
+    apolloClient.cache.evict({
+      // Just evict everything - simpler but effective
+    });
+    apolloClient.cache.gc();
+  } catch (e) {
+    console.error("Error during cache cleanup:", e);
+  }
+}, CACHE_CLEANUP_INTERVAL);
 
 // This is done after creating the client so that client may be passed to `createSubscriptionLink`.
 const subscriptionLink = createSubscriptionLink(

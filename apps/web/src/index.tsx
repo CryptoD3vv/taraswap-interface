@@ -110,9 +110,20 @@ const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
       staleTime: 1000 * 20, // 20 seconds
+      gcTime: 1000 * 60 * 5, // 5 minutes before garbage collection
+      refetchOnWindowFocus: false, // Disable refetch on window focus
+      retry: 1, // Limit retries
     },
   },
 });
+
+// Add periodic cache cleanup for React Query
+// This will help prevent memory leaks from stale queries
+const QUERY_CLEANUP_INTERVAL = 5 * 60 * 1000; // 5 minutes
+setInterval(() => {
+  queryClient.invalidateQueries();
+  queryClient.clear();
+}, QUERY_CLEANUP_INTERVAL);
 
 const container = document.getElementById("root") as HTMLElement;
 
