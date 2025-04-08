@@ -6,8 +6,11 @@ import AssetLogo, { AssetLogoBaseProps } from './AssetLogo'
 export default function CurrencyLogo(
   props: AssetLogoBaseProps & {
     currency?: Currency | null
+    logoURI?: string
   }
 ) {
+  console.log('asdsada', props.currency);
+  console.log('Logo URL:', props.logoURI || (props.currency as TokenInfo)?.logoURI);
   return (
     <AssetLogo
       currency={props.currency}
@@ -15,7 +18,7 @@ export default function CurrencyLogo(
       chainId={props.currency?.chainId}
       address={props.currency?.wrapped.address}
       symbol={props.symbol ?? props.currency?.symbol}
-      primaryImg={(props.currency as TokenInfo)?.logoURI}
+      primaryImg={props.logoURI || (props.currency as TokenInfo)?.logoURI}
       {...props}
     />
   )
