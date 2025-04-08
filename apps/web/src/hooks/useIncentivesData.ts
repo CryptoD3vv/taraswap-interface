@@ -98,6 +98,9 @@ export interface ProcessedIncentive {
   daily24hAPR: number;
   weeklyRewards: number;
   weeklyRewardsUSD: number;
+  accruedRewards: string;
+  startTime: number;
+  endTime: number;
 }
 
 interface IncentivesResponse {
@@ -107,7 +110,7 @@ interface IncentivesResponse {
   };
 }
 
-export function useIncentivesData() {
+export function useIncentivesData(poolAddress?: string) {
   const account = useAccount();
   const [activeIncentives, setActiveIncentives] = useState<
     ProcessedIncentive[]
@@ -143,11 +146,21 @@ export function useIncentivesData() {
     }
   }, [balances, isBalancesLoading]);
 
+  const getIncentivesQuery = useCallback(() => {
+    const baseQuery = INCENTIVES_QUERY;
+    if (!poolAddress) return baseQuery;
+
+    return baseQuery.replace(
+      'incentives(',
+      `incentives(where: { pool: "${poolAddress.toLowerCase()}" },`
+    );
+  }, [poolAddress]);
+
   useEffect(() => {
     if (account.address) {
       fetchData();
     }
-  }, [account.address]);
+  }, [account.address, poolAddress]);
 
   const fetchData = async () => {
     if (!account.address) return;
@@ -162,7 +175,7 @@ export function useIncentivesData() {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            query: INCENTIVES_QUERY,
+            query: getIncentivesQuery(),
             variables: { userAddress: account.address },
           }),
         }),
@@ -174,7 +187,10 @@ export function useIncentivesData() {
       }
 
       if (!incentivesData.data?.incentives?.length) {
-        console.error("No incentives data found");
+        setActiveIncentives([]);
+        setEndedIncentives([]);
+        setIncentivesData([]);
+        setIsLoading(false);
         return;
       }
 
@@ -192,12 +208,8 @@ export function useIncentivesData() {
         }
       );
 
-      setActiveIncentives(
-        incentives.filter((inc: ProcessedIncentive) => !inc.ended)
-      );
-      setEndedIncentives(
-        incentives.filter((inc: ProcessedIncentive) => inc.ended)
-      );
+      setActiveIncentives(incentives.filter((inc: ProcessedIncentive) => !inc.ended));
+      setEndedIncentives(incentives.filter((inc: ProcessedIncentive) => inc.ended));
       setUserPositions(incentivesData.data.userPositions);
     } catch (error) {
       console.error("Error fetching data:", error);
@@ -224,7 +236,7 @@ export function useIncentivesData() {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
-              query: INCENTIVES_QUERY,
+              query: getIncentivesQuery(),
               variables: { userAddress: account.address },
             }),
           }
@@ -306,6 +318,13 @@ export function useIncentivesData() {
       const weeklyRewards = adjustedDailyReward * 7;
       const weeklyRewardsUSD = dailyRewardsUSD * 7;
 
+      // Calculate accrued rewards
+      const currentTime = Math.floor(Date.now() / 1000);
+      const startTime = parseInt(incentive.startTime);
+      const endTime = parseInt(incentive.endTime);
+      const timeElapsed = Math.min(currentTime - startTime, endTime - startTime);
+      const accruedRewards = (timeElapsed * rewardPerSecond) / Math.pow(10, decimals);
+
       return {
         id: incentive.id,
         poolId: userPosition?.id,
@@ -338,6 +357,9 @@ export function useIncentivesData() {
         daily24hAPR,
         weeklyRewards,
         weeklyRewardsUSD,
+        accruedRewards: accruedRewards.toFixed(6),
+        startTime,
+        endTime,
       };
     },
     [tokenList]

@@ -121,6 +121,7 @@ const PageWrapper = styled.div`
   margin: 0 auto;
   box-sizing: border-box;
   overflow: hidden;
+  position: relative;
 
   & > * {
     box-sizing: border-box;
@@ -142,6 +143,7 @@ const LeftPane = styled.div`
   min-width: 0;
   max-width: 65%;
   overflow: hidden;
+  width: 100%;
 
   @media only screen and (max-width: ${({ theme }) => `${theme.breakpoint.md}px`}) {
     max-width: 100%;
@@ -154,6 +156,8 @@ const RightPane = styled.div`
   min-width: 350px;
   max-width: 35%;
   overflow: hidden;
+  width: 100%;
+
   @media only screen and (max-width: ${({ theme }) => `${theme.breakpoint.md}px`}) {
     max-width: 100%;
     width: 100%;
@@ -161,6 +165,11 @@ const RightPane = styled.div`
   }
 `;
 
+const DarkCardWithOverflow = styled(DarkCard)`
+  overflow: hidden;
+  width: 100%;
+  max-width: 100%;
+`;
 
 const BadgeText = styled.div`
   font-weight: 535;
@@ -1827,9 +1836,9 @@ function PositionPageContent() {
             </AutoColumn>
           </LeftPane>
           <RightPane>
-            <DarkCard  style={{ marginTop: '75px' }}>
-              <IncentivesList tokenId={Number(tokenId?.toString() ?? 0)} />
-            </DarkCard>
+            <DarkCardWithOverflow style={{ marginTop: '75px' }}>
+              <IncentivesList tokenId={Number(tokenId?.toString() ?? 0)} poolAddress={poolAddress ?? ""} />
+            </DarkCardWithOverflow>
           </RightPane>
         </PageWrapper>
         <SwitchLocaleLink />

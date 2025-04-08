@@ -13,30 +13,33 @@ import { ButtonPrimary } from "components/Button";
 import { IncentiveKey } from "hooks/usePosition";
 import Row from "components/Row";
 import { getAddress } from "ethers/lib/utils";
+import { useIncentivesData, type ProcessedIncentive } from "hooks/useIncentivesData";
+import { ScrollBarStyles } from "components/Common";
+import styled from "styled-components";
 
-interface MockedProcessedIncentive {
-  id: string;
-  poolName: string;
-  poolAddress: string;
-  token0Symbol: string;
-  token1Symbol: string;
-  token0Address: string;
-  token1Address: string;
-  token0LogoURI: string;
-  token1LogoURI: string;
-  token0Decimals: number;
-  token1Decimals: number;
-  liquidity: string;
-  reward: string;
-  totalReward: string;
-  weeklyRewards: number;
-  totalAPR: number;
-  ended: boolean;
-  hasUserPosition: boolean;
-  accruedRewards: string;
-}
+const Container = styled(AutoColumnWrapper)`
+  position: relative;
+  height: 100%;
+`
 
-function IncentivesList({ tokenId }: { tokenId: number }) {
+const ButtonsContainer = styled(Row)`
+  position: sticky;
+  top: 0;
+  background: ${({ theme }) => theme.surface1};
+  padding: 16px 0;
+  gap: 8px;
+  justify-content: center;
+  z-index: 1;
+`
+
+const ScrollableContent = styled(AutoColumnWrapper)`
+  max-height: calc(100vh - 340px);
+  overflow-y: auto;
+  gap: 0px;
+  ${ScrollBarStyles}
+`
+
+function IncentivesList({ tokenId, poolAddress }: { tokenId: number, poolAddress: string }) {
   const [expandedIncentive, setExpandedIncentive] = useState<string | null>(null);
   const { address } = useAccount();
   const v3StakerContract = useV3StakerContract();
@@ -44,81 +47,15 @@ function IncentivesList({ tokenId }: { tokenId: number }) {
   const [isBulkUnstaking, setIsBulkUnstaking] = useState(false);
   const [isBulkWithdrawing, setIsBulkWithdrawing] = useState(false);
 
-  // Mock data for testing
-  const mockedIncentives: MockedProcessedIncentive[] = [
-    {
-      id: '1',
-      poolName: 'LARA/TARA',
-      poolAddress: '0x1234567890123456789012345678901234567890',
-      token0Symbol: 'TARA',
-      token1Symbol: 'LARA',
-      token0Address: '0xE6A69cD4FF127ad8E53C21a593F7BaC4c608945e',
-      token1Address: '0xE6A69cD4FF127ad8E53C21a593F7BaC4c608945e',
-      token0LogoURI: '',
-      token1LogoURI: '',
-      token0Decimals: 18,
-      token1Decimals: 18,
-      liquidity: '1000000000000000000',
-      reward: '1',
-      totalReward: '10000',
-      weeklyRewards: 0,
-      totalAPR: 25.5,
-      ended: false,
-      hasUserPosition: true,
-      accruedRewards: '0.5',
-    },
-    {
-      id: '2',
-      poolName: 'LARA/TARA',
-      poolAddress: '0x1234567890123456789012345678901234567890',
-      token0Symbol: 'TARA',
-      token1Symbol: 'LARA',
-      token0Address: '0x1234567890123456789012345678901234567890',
-      token1Address: '0xE6A69cD4FF127ad8E53C21a593F7BaC4c608945e',
-      token0LogoURI: '',
-      token1LogoURI: '',
-      token0Decimals: 18,
-      token1Decimals: 18,
-      liquidity: '2000000000000000000',
-      reward: '2',
-      totalReward: '20000',
-      weeklyRewards: 0,
-      totalAPR: 30.2,
-      ended: false,
-      hasUserPosition: false,
-      accruedRewards: '0',
-    },
-    {
-      id: '3',
-      poolName: 'LARA/TARA',
-      poolAddress: '0x1234567890123456789012345678901234567890',
-      token0Symbol: 'TARA',
-      token1Symbol: 'LARA',
-      token0Address: '0x1234567890123456789012345678901234567890',
-      token1Address: '0xE6A69cD4FF127ad8E53C21a593F7BaC4c608945e',
-      token0LogoURI: '',
-      token1LogoURI: '',
-      token0Decimals: 18,
-      token1Decimals: 18,
-      liquidity: '50000',
-      reward: '0.5',
-      totalReward: '5000',
-      weeklyRewards: 0,
-      totalAPR: 15.8,
-      ended: true,
-      hasUserPosition: true,
-      accruedRewards: '1',
-    },
-  ];
-
-  const allIncentives = mockedIncentives;
-
+  const { activeIncentives, endedIncentives, isLoading, error } = useIncentivesData(poolAddress);
+  const allIncentives = [...activeIncentives, ...endedIncentives];
+  console.log('allIncentives', allIncentives);
   const fetchIncentiveData = useCallback(async (incentiveId: string) => {
-    const mockIncentive = mockedIncentives.find(inc => inc.id === incentiveId);
-    if (mockIncentive) {
+    const incentive = allIncentives.find(inc => inc.id === incentiveId);
+    if (incentive) {
       return {
-        rewardToken: { id: mockIncentive.poolAddress },
-        pool: { id: mockIncentive.poolAddress },
+        rewardToken: { id: incentive.poolAddress },
+        pool: { id: incentive.poolAddress },
         startTime: (Date.now() / 1000 - 3600).toString(),
         endTime: (Date.now() / 1000 + 3600).toString(),
         vestingPeriod: '86400',
@@ -126,9 +63,9 @@ function IncentivesList({ tokenId }: { tokenId: number }) {
       };
     }
     return null;
-  }, [address]);
+  }, [address, allIncentives]);
 
-  const handleStake = useCallback(async (incentive: MockedProcessedIncentive) => {
+  const handleStake = useCallback(async (incentive: ProcessedIncentive) => {
     if (!v3StakerContract || !address) return;
 
     try {
@@ -152,7 +89,7 @@ function IncentivesList({ tokenId }: { tokenId: number }) {
     }
   }, [v3StakerContract, tokenId, address, fetchIncentiveData]);
 
-  const handleUnstake = useCallback(async (incentive: MockedProcessedIncentive) => {
+  const handleUnstake = useCallback(async (incentive: ProcessedIncentive) => {
     if (!v3StakerContract || !address) return;
 
     try {
@@ -176,7 +113,7 @@ function IncentivesList({ tokenId }: { tokenId: number }) {
     }
   }, [v3StakerContract, tokenId, address, fetchIncentiveData]);
 
-  const handleClaim = useCallback(async (incentive: MockedProcessedIncentive) => {
+  const handleClaim = useCallback(async (incentive: ProcessedIncentive) => {
     if (!v3StakerContract || !address) return;
 
     try {
@@ -269,23 +206,31 @@ function IncentivesList({ tokenId }: { tokenId: number }) {
     }
   }, [v3StakerContract, tokenId, address]);
 
-  if (!allIncentives) {
+  if (isLoading) {
     return (
-      <AutoColumnWrapper gap="md">
+      <Container gap="md">
         <LoadingRows>
           <div />
           <div />
           <div />
         </LoadingRows>
-      </AutoColumnWrapper>
+      </Container>
+    );
+  }
+
+  if (error) {
+    return (
+      <Container gap="md">
+        <ThemedText.DeprecatedMain>Error loading incentives: {error.message}</ThemedText.DeprecatedMain>
+      </Container>
     );
   }
 
   return (
-    <AutoColumnWrapper gap="md">
+    <Container gap="md">
       <Trans i18nKey="common.incentives" />
-      
-      <Row gap="8px" justify="center" style={{ flexWrap: 'nowrap', width: '100%' }}>
+
+      <ButtonsContainer gap="8px">
         <ButtonPrimary
           onClick={handleBulkStake}
           disabled={isBulkStaking || allIncentives.every(inc => inc.hasUserPosition || inc.ended)}
@@ -319,111 +264,106 @@ function IncentivesList({ tokenId }: { tokenId: number }) {
             <Trans i18nKey="common.withdraw" />
           )}
         </ButtonPrimary>
-      </Row>
+      </ButtonsContainer>
 
-      {allIncentives.map((incentive) => {
-        const isExpanded = expandedIncentive === incentive.id;
-        const isActive = !incentive.ended;
-        const hasStaked = incentive.hasUserPosition;
+      <ScrollableContent gap="md">
+        {allIncentives.map((incentive) => {
+          const isExpanded = expandedIncentive === incentive.id;
+          const isActive = !incentive.ended;
+          const hasStaked = incentive.hasUserPosition;
 
-        const rewardToken = new Token(
-          1,
-          incentive.token1Address,
-          18,
-          'LARA',
-          'LARA'
-        );
+          const rewardToken = new Token(
+            1,
+            incentive.token1Address,
+            18,
+            incentive.rewardSymbol,
+            incentive.rewardSymbol
+          );
 
-
-        return (
-          <IncentiveCard key={incentive.id} onClick={() => setExpandedIncentive(isExpanded ? null : incentive.id)}>
-            <IncentiveHeader>
-              <RowFixed gap="8px">
-                <CurrencyLogo 
-                  currency={rewardToken} 
-                  size={24}
-                  logoURI={`https://raw.githubusercontent.com/taraswap/assets/master/logos/${getAddress(rewardToken.address)}/logo.png`}
-                />
-                <ThemedText.DeprecatedMain>
-                  {incentive.totalReward} {rewardToken.symbol} Rewards
-                </ThemedText.DeprecatedMain>
-                {hasStaked && (
-                  <ThemedText.DeprecatedMain style={{ marginLeft: '8px', fontSize: '14px' }}>
-                    (Staked)
-                  </ThemedText.DeprecatedMain>
-                )}
-              </RowFixed>
-              <RowFixed gap="8px">
-          
-                <IncentiveStatus isActive={isActive}>
-                  {isActive ? <Trans i18nKey="common.active" /> : <Trans i18nKey="common.ended" />}
-                </IncentiveStatus>
-             
-              </RowFixed>
-            </IncentiveHeader>
-            {isExpanded && (
-              <IncentiveContent gap="md">
-                <RowBetween>
+          return (
+            <IncentiveCard key={incentive.id} onClick={() => setExpandedIncentive(isExpanded ? null : incentive.id)}>
+              <IncentiveHeader>
+                <RowFixed gap="8px">
+                  <CurrencyLogo
+                    currency={rewardToken}
+                    size={24}
+                    logoURI={`https://raw.githubusercontent.com/taraswap/assets/master/logos/${getAddress(rewardToken.address)}/logo.png`}
+                  />
                   <ThemedText.DeprecatedMain>
-                    <Trans i18nKey="common.accruedRewards" />
+                    {incentive.reward} {rewardToken.symbol} Rewards
                   </ThemedText.DeprecatedMain>
-                  <RowFixed gap="8px">
-                    <CurrencyLogo currency={rewardToken} size={20} />
-                    <ThemedText.DeprecatedMain>
-                      {incentive.accruedRewards} LARA
+                  {hasStaked && (
+                    <ThemedText.DeprecatedMain style={{ marginLeft: '8px', fontSize: '14px' }}>
+                      (Staked)
                     </ThemedText.DeprecatedMain>
-                  </RowFixed>
-                </RowBetween>
-                <RowBetween>
-                  <ThemedText.DeprecatedMain>
-                    Total APR
-                  </ThemedText.DeprecatedMain>
-                  <ThemedText.DeprecatedMain>
-                    {incentive.totalAPR}%
-                  </ThemedText.DeprecatedMain>
-                </RowBetween>
-                <Row justify="center" gap="8px">
-                  {!hasStaked ? (
-                    <ButtonPrimary
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleStake(incentive);
-                      }}
-                      disabled={!isActive}
-                      style={{ padding: '8px', fontSize: '14px', height: '32px', width: '120px' }}
-                    >
-                      <Trans i18nKey="common.stake" />
-                    </ButtonPrimary>
-                  ) : (
-                    <>
-                      <ButtonPrimary
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleUnstake(incentive);
-                        }}
-                        style={{ padding: '8px', fontSize: '14px', height: '32px', width: '120px' }}
-                      >
-                        <Trans i18nKey="common.unstake" />
-                      </ButtonPrimary>
-                      <ButtonPrimary
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleClaim(incentive);
-                        }}
-                        disabled={incentive.accruedRewards === '0'}
-                        style={{ padding: '8px', fontSize: '14px', height: '32px', width: '120px' }}
-                      >
-                        <Trans i18nKey="common.claim" />
-                      </ButtonPrimary>
-                    </>
                   )}
-                </Row>
-              </IncentiveContent>
-            )}
-          </IncentiveCard>
-        );
-      })}
-    </AutoColumnWrapper>
+                </RowFixed>
+                <RowFixed gap="8px">
+                  <IncentiveStatus isActive={isActive}>
+                    {isActive ? <Trans i18nKey="common.active" /> : <Trans i18nKey="common.ended" />}
+                  </IncentiveStatus>
+                </RowFixed>
+              </IncentiveHeader>
+              {isExpanded && (
+                <IncentiveContent gap="md">
+                  <RowBetween>
+                    <ThemedText.DeprecatedMain>
+                      <Trans i18nKey="common.accruedRewards" />
+                    </ThemedText.DeprecatedMain>
+                    <RowFixed gap="8px">
+                      <CurrencyLogo
+                        currency={rewardToken}
+                        size={20}
+                        logoURI={`https://raw.githubusercontent.com/taraswap/assets/master/logos/${getAddress(rewardToken.address)}/logo.png`}
+                      />
+                      <ThemedText.DeprecatedMain>
+                        {incentive.accruedRewards || '0'} {rewardToken.symbol}
+                      </ThemedText.DeprecatedMain>
+                    </RowFixed>
+                  </RowBetween>
+                  <Row justify="center" gap="8px">
+                    {!hasStaked ? (
+                      <ButtonPrimary
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleStake(incentive);
+                        }}
+                        disabled={!isActive}
+                        style={{ padding: '8px', fontSize: '14px', height: '32px', width: '120px' }}
+                      >
+                        <Trans i18nKey="common.stake" />
+                      </ButtonPrimary>
+                    ) : (
+                      <>
+                        <ButtonPrimary
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleUnstake(incentive);
+                          }}
+                          style={{ padding: '8px', fontSize: '14px', height: '32px', width: '120px' }}
+                        >
+                          <Trans i18nKey="common.unstake" />
+                        </ButtonPrimary>
+                        <ButtonPrimary
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleClaim(incentive);
+                          }}
+                          disabled={!incentive.accruedRewards || Number(incentive.accruedRewards) <= 0}
+                          style={{ padding: '8px', fontSize: '14px', height: '32px', width: '120px' }}
+                        >
+                          <Trans i18nKey="common.claim" />
+                        </ButtonPrimary>
+                      </>
+                    )}
+                  </Row>
+                </IncentiveContent>
+              )}
+            </IncentiveCard>
+          );
+        })}
+      </ScrollableContent>
+    </Container>
   );
 }
 

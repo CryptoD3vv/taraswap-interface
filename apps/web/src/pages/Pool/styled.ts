@@ -2,12 +2,48 @@ import styled from 'styled-components';
 import { AutoColumn } from 'components/Column';
 import { ButtonPrimary } from 'components/Button';
 import { ThemedText } from 'theme/components';
+import { ScrollBarStyles } from 'components/Common';
+import Row from 'components/Row';
+
+// export const IncentiveCard = styled.div`
+//   background: ${({ theme }) => theme.surface2};
+//   border-radius: 16px;
+//   padding: 16px;
+//   cursor: pointer;
+//   min-height: 72px;
+//   display: flex;
+//   flex-direction: column;
+//   transition: background-color 0.2s ease;
+  
+//   &:hover {
+//     background: ${({ theme }) => theme.surface3};
+//   }
+// `
+
+// export const IncentiveHeader = styled(Row)`
+//   justify-content: space-between;
+//   align-items: center;
+//   gap: 12px;
+// `
+
+// export const IncentiveContent = styled(AutoColumn)`
+//   padding-top: 16px;
+//   border-top: 1px solid ${({ theme }) => theme.surface3};
+// `
+
+// export const IncentiveStatus = styled.div<{ isActive: boolean }>`
+//   background: ${({ theme, isActive }) => isActive ? theme.success : theme.surface3};
+//   color: ${({ theme, isActive }) => isActive ? theme.surface1 : theme.neutral2};
+//   padding: 4px 8px;
+//   border-radius: 6px;
+//   font-size: 14px;
+//   font-weight: 500;
+// `
 
 export const AutoColumnWrapper = styled(AutoColumn)`
   width: 100%;
-  box-sizing: border-box;
-  overflow: hidden;
-`;
+  padding: 0;
+` 
 
 export const Wrapper = styled.div`
   position: relative;
@@ -108,17 +144,27 @@ export const MaxButton = styled(ButtonPrimary)`
   }
 `;
 
+export const Container = styled(AutoColumnWrapper)`
+  position: relative;
+  height: 100%;
+`;
+
+export const ScrollableContent = styled(AutoColumn)`
+  max-height: calc(100vh - 340px);
+  overflow-y: auto;
+  padding-right: 16px;
+  ${ScrollBarStyles}
+`;
+
 export const IncentiveCard = styled.div`
-  margin-bottom: 12px;
   cursor: pointer;
-  transition: all 0.2s ease;
-  overflow: hidden;
+  transition: transform 0.2s ease;
   width: 100%;
   box-sizing: border-box;
   background: ${({ theme }) => theme.surface2};
   border-radius: 12px;
-  padding: 12px;
-
+  margin-bottom: 16px;
+  
   &:hover {
     transform: translateY(-2px);
   }
@@ -128,18 +174,21 @@ export const IncentiveHeader = styled.div`
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 12px;
+  padding: 16px;
   flex-wrap: wrap;
-  gap: 8px;
+  gap: 0px;
   width: 100%;
   box-sizing: border-box;
 `;
 
 export const IncentiveContent = styled(AutoColumn)`
-  padding: 12px;
+  padding: 16px;
   border-top: 1px solid ${({ theme }) => theme.neutral3};
   width: 100%;
   box-sizing: border-box;
+  gap: 16px;
+  background: ${({ theme }) => theme.surface2};
+  border-radius: 0 0 12px 12px;
 `;
 
 type IncentiveStatusProps = {
