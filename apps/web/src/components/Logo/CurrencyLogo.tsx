@@ -1,7 +1,7 @@
 import { Currency } from '@taraswap/sdk-core'
 import { TokenInfo } from '@uniswap/token-lists'
-
-import AssetLogo, { AssetLogoBaseProps } from './AssetLogo'
+import AssetLogo from './AssetLogo'
+import type { AssetLogoBaseProps } from './AssetLogo'
 
 export default function CurrencyLogo(
   props: AssetLogoBaseProps & {
@@ -9,8 +9,6 @@ export default function CurrencyLogo(
     logoURI?: string
   }
 ) {
-  console.log('asdsada', props.currency);
-  console.log('Logo URL:', props.logoURI || (props.currency as TokenInfo)?.logoURI);
   return (
     <AssetLogo
       currency={props.currency}
