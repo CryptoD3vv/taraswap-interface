@@ -8,6 +8,7 @@ import {
 import useTotalPositions, { PositionsResponse } from "hooks/useTotalPositions";
 import { useTokenList } from "hooks/useTokenList";
 import { useMultipleTokenBalances } from "hooks/useMultipleTokenBalances";
+import { useV3StakerContract } from "hooks/useV3StakerContract";
 
 interface IncentiveData {
   id: string;
@@ -88,7 +89,8 @@ export interface ProcessedIncentive {
   totalAPR: number;
   tradeFeesPercentage: number;
   tokenRewardsPercentage: number;
-  hasUserPosition: boolean;
+  hasUserPositionInPool: boolean;
+  hasUserPositionInIncentive: boolean;
   ended: boolean;
   reward: string;
   rewardSymbol: string;
@@ -103,15 +105,10 @@ export interface ProcessedIncentive {
   endTime: number;
 }
 
-interface IncentivesResponse {
-  incentives: IncentiveData[];
-  bundle: {
-    ethPriceUSD: string;
-  };
-}
 
 export function useIncentivesData(poolAddress?: string) {
   const account = useAccount();
+  const v3StakerContract = useV3StakerContract();
   const [activeIncentives, setActiveIncentives] = useState<
     ProcessedIncentive[]
   >([]);
@@ -208,8 +205,9 @@ export function useIncentivesData(poolAddress?: string) {
         }
       );
 
-      setActiveIncentives(incentives.filter((inc: ProcessedIncentive) => !inc.ended));
-      setEndedIncentives(incentives.filter((inc: ProcessedIncentive) => inc.ended));
+      const processedIncentives = await Promise.all(incentives);
+      setActiveIncentives(processedIncentives.filter((inc: ProcessedIncentive) => !inc.ended));
+      setEndedIncentives(processedIncentives.filter((inc: ProcessedIncentive) => inc.ended));
       setUserPositions(incentivesData.data.userPositions);
     } catch (error) {
       console.error("Error fetching data:", error);
@@ -248,8 +246,9 @@ export function useIncentivesData(poolAddress?: string) {
           processIncentive(inc, positions, storedBalances, ethPriceUSD)
         );
 
-        setActiveIncentives(incentives.filter((inc) => !inc.ended));
-        setEndedIncentives(incentives.filter((inc) => inc.ended));
+        const processedIncentives = await Promise.all(incentives);
+        setActiveIncentives(processedIncentives.filter((inc) => !inc.ended));
+        setEndedIncentives(processedIncentives.filter((inc) => inc.ended));
       };
 
       processIncentives();
@@ -257,16 +256,27 @@ export function useIncentivesData(poolAddress?: string) {
   }, [storedBalances, isBalancesLoading, incentivesData, account.address]);
 
   const processIncentive = useCallback(
-    (
+    async (
       incentive: IncentiveData,
       userPositions: PositionsResponse[],
       currentBalances: Record<string, { balance: number }>,
       ethPriceUSD: number
-    ): ProcessedIncentive => {
+    ): Promise<ProcessedIncentive> => {
       const userPosition = userPositions.find(
         (pos) => pos.pool.id.toLowerCase() === incentive.pool.id.toLowerCase()
       );
-      const hasUserPosition = userPosition ? true : false;
+      const hasUserPositionInPool = userPosition ? true : false;
+      
+      let hasUserPositionInIncentive = false;
+      if (userPosition && v3StakerContract) {
+        try {
+          const stakeInfo = await v3StakerContract.stakes(userPosition.id, incentive.id);
+          hasUserPositionInIncentive = stakeInfo.liquidity > 0;
+        } catch (error) {
+          console.warn('Error checking stake status:', error);
+          hasUserPositionInIncentive = false;
+        }
+      }
 
       const token0Info = findTokenByAddress(
         tokenList,
@@ -343,7 +353,8 @@ export function useIncentivesData(poolAddress?: string) {
           incentive.rewardToken.decimals
         ),
         rewardSymbol: incentive.rewardToken.symbol,
-        hasUserPosition,
+        hasUserPositionInPool,
+        hasUserPositionInIncentive,
         poolAddress: incentive.pool.id,
         token0Symbol: incentive.pool.token0.symbol,
         token1Symbol: incentive.pool.token1.symbol,
@@ -362,7 +373,7 @@ export function useIncentivesData(poolAddress?: string) {
         endTime,
       };
     },
-    [tokenList]
+    [tokenList, v3StakerContract]
   );
 
   if (isLoadingTokenList || (isBalancesLoading && incentivesData.length > 0)) {

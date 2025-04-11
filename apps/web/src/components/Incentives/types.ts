@@ -348,6 +348,9 @@ export const INCENTIVES_QUERY = `
       pool {
         id
         feeTier
+        incentives {
+          id
+        }
         token0 {
           id
           symbol
