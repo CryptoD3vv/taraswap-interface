@@ -477,37 +477,34 @@ function IncentivesList({ tokenId, poolAddress }: { tokenId: number, poolAddress
                     </RowFixed>
                   </RowBetween>
                   <Row justify="center" gap="8px">
-                    {!hasStaked ? (
-                      <ButtonPrimary
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleStake(incentive);
-                        }}
-                        disabled={!isActive || (isStaking && currentIncentiveId === incentive.id)}
-                        style={{ padding: '8px', fontSize: '14px', height: '32px', width: '120px' }}
-                      >
-                        {isStaking && currentIncentiveId === incentive.id ? (
-                          <Trans i18nKey="common.staking" />
-                        ) : (
-                          <Trans i18nKey="common.stake" />
-                        )}
-                      </ButtonPrimary>
-                    ) : (
-                      <ButtonPrimary
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleUnstake(incentive);
-                        }}
-                        disabled={isUnstaking && currentIncentiveId === incentive.id}
-                        style={{ padding: '8px', fontSize: '14px', height: '32px', width: '120px' }}
-                      >
-                        {isUnstaking && currentIncentiveId === incentive.id ? (
-                          <Trans i18nKey="common.unstaking" />
-                        ) : (
-                          <Trans i18nKey="common.unstake" />
-                        )}
-                      </ButtonPrimary>
-                    )}
+                    <ButtonPrimary
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleStake(incentive);
+                      }}
+                      disabled={!isActive || hasStaked || (isStaking && currentIncentiveId === incentive.id)}
+                      style={{ padding: '8px', fontSize: '14px', height: '32px', width: '120px' }}
+                    >
+                      {isStaking && currentIncentiveId === incentive.id ? (
+                        <Trans i18nKey="common.staking" />
+                      ) : (
+                        <Trans i18nKey="common.stake" />
+                      )}
+                    </ButtonPrimary>
+                    <ButtonPrimary
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleUnstake(incentive);
+                      }}
+                      disabled={!hasStaked || (isUnstaking && currentIncentiveId === incentive.id)}
+                      style={{ padding: '8px', fontSize: '14px', height: '32px', width: '120px' }}
+                    >
+                      {isUnstaking && currentIncentiveId === incentive.id ? (
+                        <Trans i18nKey="common.unstaking" />
+                      ) : (
+                        <Trans i18nKey="common.unstake" />
+                      )}
+                    </ButtonPrimary>
                     {Number(incentive.accruedRewards) > 0 && (
                       <ButtonPrimary
                         onClick={(e) => {
