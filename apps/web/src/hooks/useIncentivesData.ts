@@ -93,7 +93,11 @@ export interface ProcessedIncentive {
   hasUserPositionInIncentive: boolean;
   ended: boolean;
   reward: string;
-  rewardSymbol: string;
+  rewardToken: {
+    id: string;
+    symbol: string;
+    decimals: number;
+  };
   poolAddress: string;
   poolId?: number;
   userHasTokensToDeposit: boolean;
@@ -103,6 +107,8 @@ export interface ProcessedIncentive {
   accruedRewards: string;
   startTime: number;
   endTime: number;
+  vestingPeriod: string;
+  refundee: string;
 }
 
 
@@ -352,7 +358,11 @@ export function useIncentivesData(poolAddress?: string) {
           BigInt(incentive.reward),
           incentive.rewardToken.decimals
         ),
-        rewardSymbol: incentive.rewardToken.symbol,
+        rewardToken: {
+          id: incentive.rewardToken.id,
+          symbol: incentive.rewardToken.symbol,
+          decimals: incentive.rewardToken.decimals, 
+        },
         hasUserPositionInPool,
         hasUserPositionInIncentive,
         poolAddress: incentive.pool.id,
@@ -371,6 +381,8 @@ export function useIncentivesData(poolAddress?: string) {
         accruedRewards: accruedRewards.toFixed(6),
         startTime,
         endTime,
+        vestingPeriod: incentive.vestingPeriod,
+        refundee: incentive.refundee
       };
     },
     [tokenList, v3StakerContract]

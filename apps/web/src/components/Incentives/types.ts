@@ -340,7 +340,7 @@ export const INCENTIVES_QUERY = `
     incentives(subgraphError: deny) {
       id
       reward
-      reward {
+      rewardToken {
         id
         symbol
         decimals

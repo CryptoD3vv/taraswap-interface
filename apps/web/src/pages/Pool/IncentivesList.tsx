@@ -18,6 +18,7 @@ import styled from "styled-components";
 import useMultiChainPositions from "components/AccountDrawer/MiniPortfolio/Pools/useMultiChainPositions";
 import { Pool } from "@taraswap/v3-sdk";
 import { ChainId } from "@taraswap/sdk-core";
+import { ethers } from "ethers";
 
 const Container = styled(AutoColumnWrapper)`
   position: relative;
@@ -109,11 +110,13 @@ function IncentivesList({ tokenId, poolAddress }: { tokenId: number, poolAddress
       try {
         let totalRewards = 0;
         for (const incentive of allIncentives) {
-          const incentiveData = await fetchIncentiveData(incentive.id);
-          if (!incentiveData) continue;
-
-          const reward = await v3StakerContract.rewards(incentiveData.rewardToken.id, address);
-          totalRewards += reward.toNumber();
+          const reward = await v3StakerContract.rewards(incentive.rewardToken.id, address);
+          console.log('reward', reward);
+          // Convert reward to human readable format (assuming 18 decimals)
+          const rewardAmount = ethers.utils.formatUnits(reward, 18);
+          console.log('reward amount:', rewardAmount, incentive.rewardToken.symbol);
+          totalRewards += Number(rewardAmount);
+          console.log('totalRewards', totalRewards);
         }
         setHasRewards(totalRewards > 0);
       } catch (error) {
@@ -199,7 +202,6 @@ function IncentivesList({ tokenId, poolAddress }: { tokenId: number, poolAddress
     setIsBulkStaking(true);
 
     try {
-      console.log('Approving staker contract for all tokens...');
       const incentivesToStake = activeIncentives.filter(
         (incentive) => !incentive.hasUserPositionInIncentive
       );
@@ -208,45 +210,42 @@ function IncentivesList({ tokenId, poolAddress }: { tokenId: number, poolAddress
         throw new Error('No incentives available to stake');
       }
 
-      console.log('Approving NFT for staking...');
       const approveTx = await nftManagerPositionsContract.approve(
         v3StakerContract.address,
         tokenId,
         {
-          from: address,
           gasLimit: 100000
         }
       );
-      console.log('Approval transaction sent:', approveTx.hash);
-      const approveReceipt = await approveTx.wait();
-      console.log('Approval receipt:', approveReceipt);
+
+      await approveTx.wait();
 
       const incentiveKeys = await Promise.all(
         incentivesToStake.map(async (incentive) => {
-          const incentiveData = await fetchIncentiveData(incentive.id);
-          if (!incentiveData) throw new Error('Failed to fetch incentive data');
-          return {
-            rewardToken: incentiveData.rewardToken.id,
-            pool: incentiveData.pool.id,
-            startTime: parseInt(incentiveData.startTime),
-            endTime: parseInt(incentiveData.endTime),
-            vestingPeriod: parseInt(incentiveData.vestingPeriod),
-            refundee: incentiveData.refundee,
-          };
-        })
-      );
+          const key = [
+            incentive.token1Address,
+            incentive.poolAddress,
+            incentive.startTime,
+            incentive.endTime,
+            incentive.vestingPeriod,
+            incentive.refundee
+          ];
+          console.log('Encoded incentive key:', key);
+          return key;
+        }))
 
-      const data = v3StakerContract.interface.encodeFunctionData('stakeToken', [
-        incentiveKeys.length === 1 ? incentiveKeys[0] : incentiveKeys,
-        tokenId
-      ]);
+      const data = ethers.utils.defaultAbiCoder.encode(
+        ['tuple(address,address,uint256,uint256,uint256,address)[]'],
+        [incentiveKeys]
+      );
 
       const transferTx = await nftManagerPositionsContract[
         'safeTransferFrom(address,address,uint256,bytes)'
-      ](address, v3StakerContract.address, tokenId, data);
+      ](address, v3StakerContract.address, tokenId, data, {
+        gasLimit: 500000
+      });
 
       const receipt = await transferTx.wait();
-      console.log('Stake receipt:', receipt);
 
     } catch (error) {
       console.error('Error in bulk staking:', error);
@@ -257,79 +256,94 @@ function IncentivesList({ tokenId, poolAddress }: { tokenId: number, poolAddress
   }, [v3StakerContract, tokenId, address, fetchIncentiveData, activeIncentives, nftManagerPositionsContract]);
 
   const handleBulkUnstake = useCallback(async () => {
-    if (!v3StakerContract || !address) return;
+    if (!v3StakerContract || !address || !nftManagerPositionsContract) return;
     setIsBulkUnstaking(true);
 
-    const stakedIncentives = allIncentives.filter(
-      (incentive) => incentive.hasUserPositionInIncentive
-    );
-    console.log('All stakedIncentives:', stakedIncentives)
-
     try {
+      const stakedIncentives = allIncentives.filter(
+        (incentive) => incentive.hasUserPositionInIncentive
+      );
+
       if (stakedIncentives.length === 0) {
         throw new Error('No staked incentives to unstake from');
       }
 
-      const endedIncentives = stakedIncentives.filter(incentive => incentive.ended);
-      console.log('Ended incentives:', endedIncentives);
+      const approveTx = await nftManagerPositionsContract.approve(
+        v3StakerContract.address,
+        tokenId,
+        {
+          gasLimit: 100000
+        }
+      );
 
-      if (endedIncentives.length > 0) {
-        const incentiveKeys = await Promise.all(
-          endedIncentives.map(async (incentive) => {
-            const incentiveData = await fetchIncentiveData(incentive.id);
-            if (!incentiveData) throw new Error('Failed to fetch incentive data');
-            console.log('Incentive data for', incentive.id, ':', incentiveData);
-            return {
-              rewardToken: incentiveData.rewardToken.id,
-              pool: incentiveData.pool.id,
-              startTime: parseInt(incentiveData.startTime),
-              endTime: parseInt(incentiveData.endTime),
-              vestingPeriod: parseInt(incentiveData.vestingPeriod),
-              refundee: incentiveData.refundee,
-            };
-          })
-        );
+      await approveTx.wait();
 
-        console.log('Incentive keys:', incentiveKeys);
 
-        const unstakeCalls = incentiveKeys.map((key) => {
-          const callData = v3StakerContract.interface.encodeFunctionData('unstakeToken', [
-            key,
-            tokenId,
-          ]);
-          console.log('Unstake call data for incentive:', key, callData);
-          return callData;
-        });
-        console.log('All unstakeCalls:', unstakeCalls)
+      const incentiveKeys = await Promise.all(
+        stakedIncentives.map(async (incentive) => {
+          const key = [
+            incentive.token1Address,
+            incentive.poolAddress,
+            incentive.startTime,
+            incentive.endTime,
+            incentive.vestingPeriod,
+            incentive.refundee
+          ];
+          console.log('Encoded incentive key:', key);
+          return key;
+        })
+      );
 
-        const unstakeTx = await v3StakerContract.multicall(unstakeCalls);
-        console.log('unstakeTx', unstakeTx)
-        const unstakeReceipt = await unstakeTx.wait();
-        console.log('unstakeReceipt', unstakeReceipt)
-      } else {
-        throw new Error('No ended incentives to unstake from');
-      }
+      const unstakeCalls = incentiveKeys.map((key) => {
+        const callData = v3StakerContract.interface.encodeFunctionData('unstakeToken', [
+          key,
+          tokenId
+        ]);
+        return callData;
+      });
+
+      const unstakeTx = await v3StakerContract.multicall(unstakeCalls, {
+        gasLimit: 500000
+      });
+
+      const receipt = await unstakeTx.wait();
+      console.log('receipt', receipt);
+
     } catch (error) {
       console.error('Error in bulk unstaking:', error);
       throw error;
     } finally {
       setIsBulkUnstaking(false);
     }
-  }, [v3StakerContract, tokenId, address, fetchIncentiveData, allIncentives]);
+  }, [v3StakerContract, tokenId, address, fetchIncentiveData, allIncentives, nftManagerPositionsContract]);
 
   const handleBulkWithdraw = useCallback(async () => {
-    if (!v3StakerContract || !address) return;
+    if (!v3StakerContract || !address || !nftManagerPositionsContract) return;
     setIsBulkWithdrawing(true);
-
     try {
-      const withdrawTx = await v3StakerContract.withdrawToken(tokenId, address);
-      await withdrawTx.wait();
+      console.log('tokenId', tokenId)
+      const approveTx = await nftManagerPositionsContract.approve(
+        v3StakerContract.address,
+        tokenId,
+        {
+          gasLimit: 100000
+        }
+      );
+      await approveTx.wait();
+      const withdrawTx = await v3StakerContract.withdrawToken(
+        tokenId,
+        address,
+        []
+      );
+      const withdrawReceipt = await withdrawTx.wait();
+      console.log('withdrawReceipt', withdrawReceipt);
     } catch (error) {
       console.error('Error in bulk withdrawal:', error);
+      throw error;
     } finally {
       setIsBulkWithdrawing(false);
     }
-  }, [v3StakerContract, tokenId, address]);
+  }, [v3StakerContract, tokenId, address, nftManagerPositionsContract]);
 
   if (isLoading) {
     return (
@@ -399,10 +413,9 @@ function IncentivesList({ tokenId, poolAddress }: { tokenId: number, poolAddress
 
           const rewardToken = new Token(
             1,
-            incentive.token1Address,
-            18,
-            incentive.rewardSymbol,
-            incentive.rewardSymbol
+            incentive.rewardToken.id,
+            incentive.rewardToken.decimals,
+            incentive.rewardToken.symbol
           );
 
           return (
