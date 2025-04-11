@@ -15,9 +15,6 @@ import { getAddress } from "ethers/lib/utils";
 import { useIncentivesData, type ProcessedIncentive } from "hooks/useIncentivesData";
 import { ScrollBarStyles } from "components/Common";
 import styled from "styled-components";
-import useMultiChainPositions from "components/AccountDrawer/MiniPortfolio/Pools/useMultiChainPositions";
-import { Pool } from "@taraswap/v3-sdk";
-import { ChainId } from "@taraswap/sdk-core";
 import { ethers } from "ethers";
 
 const Container = styled(AutoColumnWrapper)`
@@ -50,13 +47,16 @@ function IncentivesList({ tokenId, poolAddress }: { tokenId: number, poolAddress
   const [isBulkStaking, setIsBulkStaking] = useState(false);
   const [isBulkUnstaking, setIsBulkUnstaking] = useState(false);
   const [isBulkWithdrawing, setIsBulkWithdrawing] = useState(false);
+  const [isBulkClaiming, setIsBulkClaiming] = useState(false);
   const [isTokenOwner, setIsTokenOwner] = useState(false);
   const [hasRewards, setHasRewards] = useState(false);
+  const [isStaking, setIsStaking] = useState(false);
+  const [isUnstaking, setIsUnstaking] = useState(false);
+  const [currentIncentiveId, setCurrentIncentiveId] = useState<string | null>(null);
 
   const { activeIncentives, endedIncentives, isLoading, error } = useIncentivesData(poolAddress);
   const allIncentives = [...activeIncentives, ...endedIncentives];
-
-  const { positions } = useMultiChainPositions(address ?? '', [chainId ?? ChainId.MAINNET]);
+  console.log('allIncentives', allIncentives)
 
   const hasAvailableIncentives = useMemo(() => {
     return activeIncentives.some(incentive => incentive.hasUserPositionInPool && !incentive.hasUserPositionInIncentive);
@@ -66,19 +66,16 @@ function IncentivesList({ tokenId, poolAddress }: { tokenId: number, poolAddress
     return allIncentives.some(incentive => incentive.hasUserPositionInPool && incentive.hasUserPositionInIncentive);
   }, [allIncentives]);
 
-  const fetchIncentiveData = useCallback(async (incentiveId: string) => {
+  const canWithdraw = useMemo(() => {
+    return isTokenOwner && !hasStakedIncentives;
+  }, [isTokenOwner, hasStakedIncentives]);
+
+  const getIncentiveData = useCallback(async (incentiveId: string) => {
     const incentive = allIncentives.find(inc => inc.id === incentiveId);
-    if (incentive) {
-      return {
-        rewardToken: { id: incentive.poolAddress },
-        pool: { id: incentive.poolAddress },
-        startTime: (Date.now() / 1000 - 3600).toString(),
-        endTime: (Date.now() / 1000 + 3600).toString(),
-        vestingPeriod: '86400',
-        refundee: address || '0x0000000000000000000000000000000000000000'
-      };
+    if (!incentive) {
+      return null
     }
-    return null;
+    return incentive;
   }, [address, allIncentives]);
 
   useEffect(() => {
@@ -89,8 +86,8 @@ function IncentivesList({ tokenId, poolAddress }: { tokenId: number, poolAddress
       }
 
       try {
-        const depositData = await v3StakerContract.deposits(tokenId);
-        setIsTokenOwner(depositData.owner.toLowerCase() === address.toLowerCase());
+        const deposit = await v3StakerContract.deposits(tokenId);
+        setIsTokenOwner(deposit.owner.toLowerCase() === address.toLowerCase());
       } catch (error) {
         console.error('Error checking token ownership:', error);
         setIsTokenOwner(false);
@@ -110,13 +107,11 @@ function IncentivesList({ tokenId, poolAddress }: { tokenId: number, poolAddress
       try {
         let totalRewards = 0;
         for (const incentive of allIncentives) {
-          const reward = await v3StakerContract.rewards(incentive.rewardToken.id, address);
-          console.log('reward', reward);
-          // Convert reward to human readable format (assuming 18 decimals)
-          const rewardAmount = ethers.utils.formatUnits(reward, 18);
-          console.log('reward amount:', rewardAmount, incentive.rewardToken.symbol);
-          totalRewards += Number(rewardAmount);
-          console.log('totalRewards', totalRewards);
+          if (incentive.hasUserPositionInIncentive) {
+            const reward = await v3StakerContract.rewards(incentive.rewardToken.id, address);
+            const rewardAmount = ethers.utils.formatUnits(reward, 18);
+            totalRewards += Number(rewardAmount);
+          }
         }
         setHasRewards(totalRewards > 0);
       } catch (error) {
@@ -126,76 +121,113 @@ function IncentivesList({ tokenId, poolAddress }: { tokenId: number, poolAddress
     };
 
     checkRewards();
-  }, [v3StakerContract, address, allIncentives, fetchIncentiveData]);
+  }, [v3StakerContract, address, allIncentives]);
 
   const handleStake = useCallback(async (incentive: ProcessedIncentive) => {
-    if (!v3StakerContract || !address) return;
+    if (!v3StakerContract || !address || !nftManagerPositionsContract) return;
+    setIsStaking(true);
+    setCurrentIncentiveId(incentive.id);
 
     try {
-      const incentiveData = await fetchIncentiveData(incentive.id);
+      const incentiveData = await getIncentiveData(incentive.id);
       if (!incentiveData) {
         throw new Error('Failed to fetch incentive data');
       }
 
+      const approveTx = await nftManagerPositionsContract.approve(
+        v3StakerContract.address,
+        tokenId,
+        {
+          gasLimit: 300000
+        }
+      );
+
+      await approveTx.wait();
+
       const incentiveKey: IncentiveKey = {
         rewardToken: incentiveData.rewardToken.id,
-        pool: incentiveData.pool.id,
-        startTime: parseInt(incentiveData.startTime),
-        endTime: parseInt(incentiveData.endTime),
+        pool: incentiveData.poolAddress,
+        startTime: incentiveData.startTime,
+        endTime: incentiveData.endTime,
         vestingPeriod: parseInt(incentiveData.vestingPeriod),
         refundee: incentiveData.refundee,
       };
+      console.log('incentiveKey', incentiveKey)
+
+
       const stakeTx = await v3StakerContract.stakeToken(incentiveKey, tokenId);
       await stakeTx.wait();
     } catch (error) {
       console.error('Error staking:', error);
+    } finally {
+      setIsStaking(false);
+      setCurrentIncentiveId(null);
     }
-  }, [v3StakerContract, tokenId, address, fetchIncentiveData]);
+  }, [v3StakerContract, tokenId, address, getIncentiveData, nftManagerPositionsContract]);
 
   const handleUnstake = useCallback(async (incentive: ProcessedIncentive) => {
-    if (!v3StakerContract || !address) return;
+    if (!v3StakerContract || !address || !nftManagerPositionsContract) return;
+    setIsUnstaking(true);
+    setCurrentIncentiveId(incentive.id);
 
     try {
-      const incentiveData = await fetchIncentiveData(incentive.id);
+      const incentiveData = await getIncentiveData(incentive.id);
       if (!incentiveData) {
         throw new Error('Failed to fetch incentive data');
       }
 
+      const approveTx = await nftManagerPositionsContract.approve(
+        v3StakerContract.address,
+        tokenId,
+        {
+          gasLimit: 100000
+        }
+      );
+
+      await approveTx.wait();
+
       const incentiveKey: IncentiveKey = {
         rewardToken: incentiveData.rewardToken.id,
-        pool: incentiveData.pool.id,
-        startTime: parseInt(incentiveData.startTime),
-        endTime: parseInt(incentiveData.endTime),
+        pool: incentiveData.poolAddress,
+        startTime: incentiveData.startTime,
+        endTime: incentiveData.endTime,
         vestingPeriod: parseInt(incentiveData.vestingPeriod),
         refundee: incentiveData.refundee,
       };
+
       const unstakeTx = await v3StakerContract.unstakeToken(incentiveKey, tokenId);
       await unstakeTx.wait();
     } catch (error) {
       console.error('Error unstaking:', error);
+    } finally {
+      setIsUnstaking(false);
+      setCurrentIncentiveId(null);
     }
-  }, [v3StakerContract, tokenId, address, fetchIncentiveData]);
+  }, [v3StakerContract, tokenId, address, getIncentiveData, nftManagerPositionsContract]);
 
   const handleClaim = useCallback(async (incentive: ProcessedIncentive) => {
     if (!v3StakerContract || !address) return;
 
     try {
-      const incentiveData = await fetchIncentiveData(incentive.id);
+      const incentiveData = await getIncentiveData(incentive.id);
       if (!incentiveData) {
         throw new Error('Failed to fetch incentive data');
       }
 
-      const reward = await v3StakerContract.rewards(incentiveData.rewardToken.id, address);
+      const reward = await v3StakerContract.rewards(
+        incentive.rewardToken.id,
+        address
+      );
       const claimTx = await v3StakerContract.claimReward(
-        incentiveData.rewardToken.id,
+        incentive.rewardToken.id,
         address,
         reward
       );
-      await claimTx.wait();
+      const claimReceipt = await claimTx.wait();
     } catch (error) {
       console.error('Error claiming:', error);
     }
-  }, [v3StakerContract, address, fetchIncentiveData]);
+  }, [v3StakerContract, address, getIncentiveData]);
 
   const handleBulkStake = useCallback(async () => {
     if (!v3StakerContract || !address || !nftManagerPositionsContract) return;
@@ -230,7 +262,6 @@ function IncentivesList({ tokenId, poolAddress }: { tokenId: number, poolAddress
             incentive.vestingPeriod,
             incentive.refundee
           ];
-          console.log('Encoded incentive key:', key);
           return key;
         }))
 
@@ -253,7 +284,7 @@ function IncentivesList({ tokenId, poolAddress }: { tokenId: number, poolAddress
     } finally {
       setIsBulkStaking(false);
     }
-  }, [v3StakerContract, tokenId, address, fetchIncentiveData, activeIncentives, nftManagerPositionsContract]);
+  }, [v3StakerContract, tokenId, address, getIncentiveData, activeIncentives, nftManagerPositionsContract]);
 
   const handleBulkUnstake = useCallback(async () => {
     if (!v3StakerContract || !address || !nftManagerPositionsContract) return;
@@ -278,18 +309,16 @@ function IncentivesList({ tokenId, poolAddress }: { tokenId: number, poolAddress
 
       await approveTx.wait();
 
-
       const incentiveKeys = await Promise.all(
         stakedIncentives.map(async (incentive) => {
           const key = [
-            incentive.token1Address,
+            incentive.rewardToken.id,
             incentive.poolAddress,
             incentive.startTime,
             incentive.endTime,
             incentive.vestingPeriod,
             incentive.refundee
           ];
-          console.log('Encoded incentive key:', key);
           return key;
         })
       );
@@ -307,7 +336,6 @@ function IncentivesList({ tokenId, poolAddress }: { tokenId: number, poolAddress
       });
 
       const receipt = await unstakeTx.wait();
-      console.log('receipt', receipt);
 
     } catch (error) {
       console.error('Error in bulk unstaking:', error);
@@ -315,35 +343,25 @@ function IncentivesList({ tokenId, poolAddress }: { tokenId: number, poolAddress
     } finally {
       setIsBulkUnstaking(false);
     }
-  }, [v3StakerContract, tokenId, address, fetchIncentiveData, allIncentives, nftManagerPositionsContract]);
+  }, [v3StakerContract, tokenId, address, getIncentiveData, allIncentives, nftManagerPositionsContract]);
 
   const handleBulkWithdraw = useCallback(async () => {
     if (!v3StakerContract || !address || !nftManagerPositionsContract) return;
     setIsBulkWithdrawing(true);
     try {
-      console.log('tokenId', tokenId)
-      const approveTx = await nftManagerPositionsContract.approve(
-        v3StakerContract.address,
-        tokenId,
-        {
-          gasLimit: 100000
-        }
-      );
-      await approveTx.wait();
       const withdrawTx = await v3StakerContract.withdrawToken(
         tokenId,
         address,
         []
       );
       const withdrawReceipt = await withdrawTx.wait();
-      console.log('withdrawReceipt', withdrawReceipt);
     } catch (error) {
       console.error('Error in bulk withdrawal:', error);
       throw error;
     } finally {
       setIsBulkWithdrawing(false);
     }
-  }, [v3StakerContract, tokenId, address, nftManagerPositionsContract]);
+  }, [v3StakerContract, tokenId, address, nftManagerPositionsContract, allIncentives]);
 
   if (isLoading) {
     return (
@@ -394,7 +412,7 @@ function IncentivesList({ tokenId, poolAddress }: { tokenId: number, poolAddress
         </ButtonPrimary>
         <ButtonPrimary
           onClick={handleBulkWithdraw}
-          disabled={isBulkWithdrawing || !hasRewards}
+          disabled={isBulkWithdrawing || !canWithdraw}
           style={{ padding: '8px', fontSize: '14px', height: '32px', whiteSpace: 'nowrap', width: '120px' }}
         >
           {isBulkWithdrawing ? (
@@ -410,7 +428,6 @@ function IncentivesList({ tokenId, poolAddress }: { tokenId: number, poolAddress
           const isExpanded = expandedIncentive === incentive.id;
           const isActive = !incentive.ended;
           const hasStaked = incentive.hasUserPositionInIncentive;
-
           const rewardToken = new Token(
             1,
             incentive.rewardToken.id,
@@ -466,33 +483,41 @@ function IncentivesList({ tokenId, poolAddress }: { tokenId: number, poolAddress
                           e.stopPropagation();
                           handleStake(incentive);
                         }}
-                        disabled={!isActive}
+                        disabled={!isActive || (isStaking && currentIncentiveId === incentive.id)}
                         style={{ padding: '8px', fontSize: '14px', height: '32px', width: '120px' }}
                       >
-                        <Trans i18nKey="common.stake" />
+                        {isStaking && currentIncentiveId === incentive.id ? (
+                          <Trans i18nKey="common.staking" />
+                        ) : (
+                          <Trans i18nKey="common.stake" />
+                        )}
                       </ButtonPrimary>
                     ) : (
-                      <>
-                        <ButtonPrimary
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleUnstake(incentive);
-                          }}
-                          style={{ padding: '8px', fontSize: '14px', height: '32px', width: '120px' }}
-                        >
+                      <ButtonPrimary
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleUnstake(incentive);
+                        }}
+                        disabled={isUnstaking && currentIncentiveId === incentive.id}
+                        style={{ padding: '8px', fontSize: '14px', height: '32px', width: '120px' }}
+                      >
+                        {isUnstaking && currentIncentiveId === incentive.id ? (
+                          <Trans i18nKey="common.unstaking" />
+                        ) : (
                           <Trans i18nKey="common.unstake" />
-                        </ButtonPrimary>
-                        <ButtonPrimary
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleClaim(incentive);
-                          }}
-                          disabled={!incentive.accruedRewards || Number(incentive.accruedRewards) <= 0}
-                          style={{ padding: '8px', fontSize: '14px', height: '32px', width: '120px' }}
-                        >
-                          <Trans i18nKey="common.claim" />
-                        </ButtonPrimary>
-                      </>
+                        )}
+                      </ButtonPrimary>
+                    )}
+                    {Number(incentive.accruedRewards) > 0 && (
+                      <ButtonPrimary
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleClaim(incentive);
+                        }}
+                        style={{ padding: '8px', fontSize: '14px', height: '32px', width: '120px' }}
+                      >
+                        <Trans i18nKey="common.claim" />
+                      </ButtonPrimary>
                     )}
                   </Row>
                 </IncentiveContent>
