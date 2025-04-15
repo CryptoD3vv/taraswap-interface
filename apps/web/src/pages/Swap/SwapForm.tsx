@@ -23,6 +23,7 @@ import { Field } from "components/swap/constants";
 import {
   ArrowContainer,
   ArrowWrapper,
+  Dots,
   OutputSwapSection,
   SwapSection,
 } from "components/swap/styled";
@@ -169,6 +170,7 @@ export function SwapForm({
     wrapType,
     execute: onWrap,
     inputError: wrapInputError,
+    isApproving,
   } = useWrapCallback(
     currencies[Field.INPUT],
     currencies[Field.OUTPUT],
@@ -227,13 +229,36 @@ export function SwapForm({
     ],
     [trade, tradeState]
   );
-
   const fiatValueTradeInput = useUSDPrice(trade?.inputAmount);
   const fiatValueTradeOutput = useUSDPrice(trade?.outputAmount);
   const preTaxFiatValueTradeOutput = useUSDPrice(trade?.outputAmount);
+
+  // Add this check to validate if USD prices are in sync with trade amounts
+  const usdPricesAreStale = useMemo(() => {
+    if (!trade?.inputAmount || !trade?.outputAmount) return false;
+
+    const inputAmountDecimal = parseFloat(trade.inputAmount.toFixed(2));
+    const outputAmountDecimal = parseFloat(trade.outputAmount.toFixed(2));
+
+    // If either USD price is missing, prices are stale
+    if (!fiatValueTradeInput.data || !fiatValueTradeOutput.data) return true;
+
+    // Check if the ratio between USD prices is significantly different from the ratio between amounts
+    const tradeRatio = inputAmountDecimal / outputAmountDecimal;
+    const usdRatio = fiatValueTradeInput.data / fiatValueTradeOutput.data;
+
+    // Allow for some small deviation (e.g., 5%)
+    return Math.abs(tradeRatio - usdRatio) > tradeRatio * 0.05;
+  }, [
+    trade?.inputAmount,
+    trade?.outputAmount,
+    fiatValueTradeInput.data,
+    fiatValueTradeOutput.data,
+  ]);
+
   const [stablecoinPriceImpact, preTaxStablecoinPriceImpact] = useMemo(
     () =>
-      routeIsSyncing || !isClassicTrade(trade) || showWrap
+      routeIsSyncing || !isClassicTrade(trade) || showWrap || usdPricesAreStale
         ? [undefined, undefined]
         : [
             computeFiatValuePriceImpact(
@@ -252,6 +277,7 @@ export function SwapForm({
       routeIsSyncing,
       trade,
       showWrap,
+      usdPricesAreStale, // Add to dependencies
     ]
   );
 
@@ -476,17 +502,29 @@ export function SwapForm({
 
   // warnings on the greater of fiat value price impact and execution price impact
   const { priceImpactSeverity, largerPriceImpact } = useMemo(() => {
-    if (!isClassicTrade(trade)) {
+    if (!trade || !isClassicTrade(trade)) {
       return { priceImpactSeverity: 0, largerPriceImpact: undefined };
     }
 
-    const marketPriceImpact = trade?.priceImpact
+    // Only calculate price impact if we have a valid trade with stable values
+    const marketPriceImpact = trade.priceImpact
       ? computeRealizedPriceImpact(trade)
       : undefined;
+
+    if (!marketPriceImpact) {
+      return { priceImpactSeverity: 0, largerPriceImpact: undefined };
+    }
+
+    // Skip calculation if values are unreasonable (>90% impact is likely incorrect)
+    if (marketPriceImpact.greaterThan(90)) {
+      return { priceImpactSeverity: 0, largerPriceImpact: undefined };
+    }
+
     const largerPriceImpact = largerPercentValue(
       marketPriceImpact,
       preTaxStablecoinPriceImpact
     );
+
     return {
       priceImpactSeverity: warningSeverity(largerPriceImpact),
       largerPriceImpact,
@@ -580,6 +618,7 @@ export function SwapForm({
   );
 
   const inputCurrency = currencies[Field.INPUT] ?? undefined;
+  const outputCurrency = currencies[Field.OUTPUT] ?? undefined;
   const selectChain = useSelectChain();
   const switchingChain = useAppSelector(
     (state) => state.wallets.switchingChain
@@ -798,11 +837,31 @@ export function SwapForm({
               data-testid="wrap-button"
             >
               {wrapInputError ? (
-                <WrapErrorText wrapInputError={wrapInputError} />
+                <WrapErrorText
+                  wrapInputError={wrapInputError}
+                  tokenSymbolBase={inputCurrency?.symbol ?? ""}
+                  tokenSymbolWrapped={outputCurrency?.symbol ?? ""}
+                />
               ) : wrapType === WrapType.WRAP ? (
                 <Trans i18nKey="common.wrap.button" />
               ) : wrapType === WrapType.UNWRAP ? (
                 <Trans i18nKey="common.unwrap.button" />
+              ) : wrapType === WrapType.APPROVE_AND_WRAP ? (
+                isApproving ? (
+                  <Dots>
+                    <Trans i18nKey="common.approving" />
+                  </Dots>
+                ) : (
+                  <Trans i18nKey="common.approveAndWrap.button" />
+                )
+              ) : wrapType === WrapType.APPROVE_AND_UNWRAP ? (
+                isApproving ? (
+                  <Dots>
+                    <Trans i18nKey="common.approving" />
+                  </Dots>
+                ) : (
+                  <Trans i18nKey="common.approveAndUnwrap.button" />
+                )
               ) : null}
             </ButtonPrimary>
           ) : routeNotFound &&

@@ -14,6 +14,7 @@ import {
   DAI_OPTIMISM,
   DAI_POLYGON,
   ETH_BSC,
+  ETH_TARAXA,
   nativeOnChain,
   OP,
   PORTAL_ETH_CELO,
@@ -48,6 +49,7 @@ import {
   WETH_POLYGON,
   WETH_POLYGON_MUMBAI,
   WRAPPED_NATIVE_CURRENCY,
+  WRAPPED_STTARA_TARAXA,
 } from "constants/tokens";
 import {
   getNativeLogoURI,
@@ -219,7 +221,9 @@ export const COMMON_BASES: ChainCurrencyList = {
     USDT_TARAXA,
     USDM_TARAXA,
     TSWAP_TARAXA,
+    WRAPPED_STTARA_TARAXA,
     STTARA_TARAXA,
+    ETH_TARAXA,
   ].map(buildCurrencyInfo),
 };
 

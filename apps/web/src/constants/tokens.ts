@@ -19,6 +19,14 @@ export const LARA_TARAXA = new Token(
   "Lara"
 );
 
+export const ETH_TARAXA = new Token(
+  ChainId.TARAXA,
+  "0x39b1fc930c43606af5c353e90a55db10bcaf4087",
+  18,
+  "ETH",
+  "Ethereum"
+);
+
 export const USDM_TARAXA = new Token(
   ChainId.TARAXA,
   "0xC26B690773828999c2612549CC815d1F252EA15e",
@@ -33,6 +41,14 @@ export const STTARA_TARAXA = new Token(
   18,
   "stTARA",
   "Staked Taraxa"
+);
+
+export const WRAPPED_STTARA_TARAXA = new Token(
+  ChainId.TARAXA,
+  "0x31E7b8CF625aA83ac77441b7245f97acA25aa4C5",
+  18,
+  "wstTARA",
+  "Wrapped Staked Taraxa"
 );
 
 export const TSWAP_TARAXA = new Token(
@@ -50,6 +66,15 @@ export const USDT_TARAXA = new Token(
   "USDT",
   "Tether USD"
 );
+
+export const CHDPU_TARAXA = new Token(
+  ChainId.TARAXA,
+  "0xaad94Afea296DCF8c97D05dbf3733A245c3Ea78F",
+  18,
+  "CHDPU",
+  "Chadpu"
+);
+
 export const USDT_TARAXA_TESTNET = new Token(
   ChainId.TARAXA_TESTNET,
   "0x30c708A962641B223b6b78237A402FAeD9860fc2",
