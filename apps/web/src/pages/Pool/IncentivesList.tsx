@@ -56,7 +56,6 @@ function IncentivesList({ tokenId, poolAddress }: { tokenId: number, poolAddress
 
   const { activeIncentives, endedIncentives, isLoading, error } = useIncentivesData(poolAddress);
   const allIncentives = [...activeIncentives, ...endedIncentives];
-  console.log('allIncentives', allIncentives)
 
   const hasAvailableIncentives = useMemo(() => {
     return activeIncentives.some(incentive => incentive.hasUserPositionInPool && !incentive.hasUserPositionInIncentive);
@@ -107,10 +106,8 @@ function IncentivesList({ tokenId, poolAddress }: { tokenId: number, poolAddress
       try {
         let totalRewards = 0;
         for (const incentive of allIncentives) {
-          if (incentive.hasUserPositionInIncentive) {
-            const reward = await v3StakerContract.rewards(incentive.rewardToken.id, address);
-            const rewardAmount = ethers.utils.formatUnits(reward, 18);
-            totalRewards += Number(rewardAmount);
+          if (incentive.hasUserPositionInIncentive && incentive.currentReward) {
+            totalRewards += Number(incentive.currentReward.reward);
           }
         }
         setHasRewards(totalRewards > 0);
@@ -124,7 +121,7 @@ function IncentivesList({ tokenId, poolAddress }: { tokenId: number, poolAddress
   }, [v3StakerContract, address, allIncentives]);
 
   const handleStake = useCallback(async (incentive: ProcessedIncentive) => {
-    if (!v3StakerContract || !address || !nftManagerPositionsContract) return;
+    if (!v3StakerContract || !address) return;
     setIsStaking(true);
     setCurrentIncentiveId(incentive.id);
 
@@ -134,16 +131,6 @@ function IncentivesList({ tokenId, poolAddress }: { tokenId: number, poolAddress
         throw new Error('Failed to fetch incentive data');
       }
 
-      const approveTx = await nftManagerPositionsContract.approve(
-        v3StakerContract.address,
-        tokenId,
-        {
-          gasLimit: 300000
-        }
-      );
-
-      await approveTx.wait();
-
       const incentiveKey: IncentiveKey = {
         rewardToken: incentiveData.rewardToken.id,
         pool: incentiveData.poolAddress,
@@ -152,8 +139,6 @@ function IncentivesList({ tokenId, poolAddress }: { tokenId: number, poolAddress
         vestingPeriod: parseInt(incentiveData.vestingPeriod),
         refundee: incentiveData.refundee,
       };
-      console.log('incentiveKey', incentiveKey)
-
 
       const stakeTx = await v3StakerContract.stakeToken(incentiveKey, tokenId);
       await stakeTx.wait();
@@ -163,10 +148,10 @@ function IncentivesList({ tokenId, poolAddress }: { tokenId: number, poolAddress
       setIsStaking(false);
       setCurrentIncentiveId(null);
     }
-  }, [v3StakerContract, tokenId, address, getIncentiveData, nftManagerPositionsContract]);
+  }, [v3StakerContract, tokenId, address, getIncentiveData]);
 
   const handleUnstake = useCallback(async (incentive: ProcessedIncentive) => {
-    if (!v3StakerContract || !address || !nftManagerPositionsContract) return;
+    if (!v3StakerContract || !address) return;
     setIsUnstaking(true);
     setCurrentIncentiveId(incentive.id);
 
@@ -175,16 +160,6 @@ function IncentivesList({ tokenId, poolAddress }: { tokenId: number, poolAddress
       if (!incentiveData) {
         throw new Error('Failed to fetch incentive data');
       }
-
-      const approveTx = await nftManagerPositionsContract.approve(
-        v3StakerContract.address,
-        tokenId,
-        {
-          gasLimit: 100000
-        }
-      );
-
-      await approveTx.wait();
 
       const incentiveKey: IncentiveKey = {
         rewardToken: incentiveData.rewardToken.id,
@@ -203,7 +178,7 @@ function IncentivesList({ tokenId, poolAddress }: { tokenId: number, poolAddress
       setIsUnstaking(false);
       setCurrentIncentiveId(null);
     }
-  }, [v3StakerContract, tokenId, address, getIncentiveData, nftManagerPositionsContract]);
+  }, [v3StakerContract, tokenId, address, getIncentiveData]);
 
   const handleClaim = useCallback(async (incentive: ProcessedIncentive) => {
     if (!v3StakerContract || !address) return;
@@ -242,15 +217,6 @@ function IncentivesList({ tokenId, poolAddress }: { tokenId: number, poolAddress
         throw new Error('No incentives available to stake');
       }
 
-      const approveTx = await nftManagerPositionsContract.approve(
-        v3StakerContract.address,
-        tokenId,
-        {
-          gasLimit: 100000
-        }
-      );
-
-      await approveTx.wait();
 
       const incentiveKeys = await Promise.all(
         incentivesToStake.map(async (incentive) => {
@@ -298,16 +264,6 @@ function IncentivesList({ tokenId, poolAddress }: { tokenId: number, poolAddress
       if (stakedIncentives.length === 0) {
         throw new Error('No staked incentives to unstake from');
       }
-
-      const approveTx = await nftManagerPositionsContract.approve(
-        v3StakerContract.address,
-        tokenId,
-        {
-          gasLimit: 100000
-        }
-      );
-
-      await approveTx.wait();
 
       const incentiveKeys = await Promise.all(
         stakedIncentives.map(async (incentive) => {
@@ -472,7 +428,7 @@ function IncentivesList({ tokenId, poolAddress }: { tokenId: number, poolAddress
                         logoURI={`https://raw.githubusercontent.com/taraswap/assets/master/logos/${getAddress(rewardToken.address)}/logo.png`}
                       />
                       <ThemedText.DeprecatedMain>
-                        {incentive.accruedRewards || '0'} {rewardToken.symbol}
+                        {incentive.currentReward?.reward || '0'} {rewardToken.symbol}
                       </ThemedText.DeprecatedMain>
                     </RowFixed>
                   </RowBetween>
@@ -505,7 +461,7 @@ function IncentivesList({ tokenId, poolAddress }: { tokenId: number, poolAddress
                         <Trans i18nKey="common.unstake" />
                       )}
                     </ButtonPrimary>
-                    {Number(incentive.accruedRewards) > 0 && (
+                    {Number(incentive.currentReward?.reward) > 0 && (
                       <ButtonPrimary
                         onClick={(e) => {
                           e.stopPropagation();

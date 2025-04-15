@@ -109,6 +109,11 @@ export interface ProcessedIncentive {
   endTime: number;
   vestingPeriod: string;
   refundee: string;
+  currentReward?: {
+    reward: string;
+    maxReward: string;
+    secondsInside: number;
+  };
 }
 
 
@@ -274,10 +279,29 @@ export function useIncentivesData(poolAddress?: string) {
       const hasUserPositionInPool = userPosition ? true : false;
       
       let hasUserPositionInIncentive = false;
+      let currentReward = undefined;
       if (userPosition && v3StakerContract) {
         try {
           const stakeInfo = await v3StakerContract.stakes(userPosition.id, incentive.id);
           hasUserPositionInIncentive = stakeInfo.liquidity > 0;
+
+          if (hasUserPositionInIncentive) {
+            const incentiveKey = {
+              rewardToken: incentive.rewardToken.id,
+              pool: incentive.pool.id,
+              startTime: incentive.startTime,
+              endTime: incentive.endTime,
+              vestingPeriod: parseInt(incentive.vestingPeriod),
+              refundee: incentive.refundee,
+            };
+
+            const [reward, maxReward, secondsInside] = await v3StakerContract.getRewardInfo(incentiveKey, userPosition.id);
+            currentReward = {
+              reward: formatUnits(reward, incentive.rewardToken.decimals),
+              maxReward: formatUnits(maxReward, incentive.rewardToken.decimals),
+              secondsInside: secondsInside.toNumber()
+            };
+          }
         } catch (error) {
           console.warn('Error checking stake status:', error);
           hasUserPositionInIncentive = false;
@@ -382,7 +406,8 @@ export function useIncentivesData(poolAddress?: string) {
         startTime,
         endTime,
         vestingPeriod: incentive.vestingPeriod,
-        refundee: incentive.refundee
+        refundee: incentive.refundee,
+        currentReward,
       };
     },
     [tokenList, v3StakerContract]
